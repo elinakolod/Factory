@@ -40,7 +40,7 @@ class Factory
         return instance_variable_get("@#{member}")
       end
       if member.is_a? Integer
-        raise IndexError if member > attributes_size || member < 0
+        raise IndexError unless member.between?(0, attributes_size)
         return to_a[member]
       end
       to_a[member.round(half: :down)] if member.is_a?(Float)
@@ -52,7 +52,7 @@ class Factory
           return instance_variable_set("@#{member}", value)
         end
         if member.is_a? Integer
-          raise IndexError if member > attributes_size || member < 0
+          raise IndexError unless member.between?(0, attributes_size)
           return instance_variable_set("@#{attributes[member]}", value)
         end
       end
