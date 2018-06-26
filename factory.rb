@@ -8,46 +8,53 @@ class Factory
     attributes_size = attributes.size
     sorted_attributes = attributes.sort
     subclass = Class.new self do
-      send(:attr_accessor, *attributes)
+    send(:attr_accessor, *attributes)
 
-      class << self
-        define_method :new do |*args|
-          object = allocate
-          object.send(:initialize, *args)
-          object
-        end
+    class << self
+      define_method :new do |*args|
+        object = allocate
+        object.send(:initialize, *args)
+        object
       end
-      define_method :initialize do |*values|
-        values_size = values.size
-        given_values = values[0]
+    end
+    define_method :initialize do |*values|
+      values_size = values.size
+      given_values = values[0]
+      if !keyword_init
+        raise ArgumentError, 'Too many arguments' if values_size > attributes_size
+        raise ArgumentError, 'Wrong number of arguments' if values_size < attributes_size
+        values.each_with_index { |val, i| send("#{attributes[i]}=", val) }
+      elsif given_values.keys.sort != sorted_attributes
         sorted_given_keys = given_values.keys.sort
-        if !keyword_init
-          raise ArgumentError, 'Too many arguments' if values_size > attributes_size
-          raise ArgumentError, 'Wrong number of arguments' if values_size < attributes_size
-          index = 0
-          while index < values_size
-            send("#{attributes[index]}=", values[index])
-            index += 1
-          end
-        elsif sorted_given_keys != sorted_attributes
-          redundant_args = sorted_given_keys - sorted_attributes
-          missing_args = sorted_attributes - sorted_given_keys
-          raise ArgumentError, "Do not match expected keys: #{missing_args}, #{redundant_args}"
-        else
-          given_values.map { |k, v| instance_variable_set "@#{k}", v }
-        end
+        redundant_args = sorted_given_keys - sorted_attributes
+        missing_args = sorted_attributes - sorted_given_keys
+        raise ArgumentError, "Do not match expected keys: #{missing_args}, #{redundant_args}"
+      else
+        given_values.map { |k, v| instance_variable_set "@#{k}", v }
       end
+    end
 
-      define_method :[] do |member|
-        return instance_variable_get("@#{member}") if member.is_a?(String) || member.is_a?(Symbol)
-        if member.is_a? Integer
-          raise IndexError if member > attributes_size
-          return to_a[member]
-        end
+    define_method :[] do |member|
+      if member.is_a?(String) || member.is_a?(Symbol)
+        raise NameError unless members.include? member.to_sym
+        return instance_variable_get("@#{member}")
+      end
+      if member.is_a? Integer
+        raise IndexError if member > attributes_size || member < 0
+        return to_a[member]
+      end
+      to_a[member.round(half: :down)] if member.is_a?(Float)
       end
 
       define_method :[]= do |member, value|
-        instance_variable_set("@#{member}", value)
+        if member.is_a?(String) || member.is_a?(Symbol)
+          raise NameError unless members.include? member.to_sym
+          return instance_variable_set("@#{member}", value)
+        end
+        if member.is_a? Integer
+          raise IndexError if member > attributes_size || member < 0
+          return instance_variable_set("@#{attributes[member]}", value)
+        end
       end
 
       define_method :members do
@@ -57,9 +64,16 @@ class Factory
         end
         members
       end
+
+      define_method :values_at do |*indices|
+        indices.each do |index|
+          raise IndexError if index > attributes_size || index < 0
+        end
+        to_a.values_at(*indices)
+      end
     end
-    class_name == 'not given' ? subclass : const_set(class_name, subclass)
     class_eval(&block) if block_given?
+    class_name == 'not given' ? subclass : const_set(class_name, subclass)
   end
 
   def ==(other)
@@ -89,10 +103,6 @@ class Factory
     members.length
   end
   alias size length
-
-  def values_at(*indices)
-    to_a.values_at(*indices)
-  end
 
   def dig(*keys)
     to_h.dig(*keys)
